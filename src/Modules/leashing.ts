@@ -370,7 +370,7 @@ export class LeashingModule extends BaseModule {
                         // else ChatRoomStart(data.ChatRoomSpace, "", null, null, "Introduction", BackgroundsTagList); //CommonSetScreen("Room", "ChatSearch")
                     } else {
                         // If the leading character is no longer allowed or goes somewhere blocked, remove them from our leading lists.
-                        this.RemoveLeashingsWithMember(data.MemberNumber, false);
+                        this.RemoveLeashings(data.MemberNumber, false);
                     }
                 }
             }
@@ -412,7 +412,7 @@ export class LeashingModule extends BaseModule {
             if (data?.Content == "ServerDisconnect") {
                 let num = sender?.MemberNumber;
                 if (!!num) {
-                    this.RemoveAllLeashingsWithMember(num);
+                    this.RemoveLeashings(num);
                 }
             }
         });
@@ -524,24 +524,15 @@ export class LeashingModule extends BaseModule {
         });
     }
 
-    RemoveAllLeashingsWithMember(pairedMember: number) {
+    RemoveLeashings(pairedMember: number, isSource?: boolean, type?: GrabType) {
         this.Pairings = this.Pairings.filter(p => {
-            if (p.PairedMember == pairedMember) return this.RemoveCallback(p);
-            else return true;
-        });
-    }
-
-    RemoveLeashingsWithMember(pairedMember: number, isSource: boolean) {
-        this.Pairings = this.Pairings.filter(p => {
-            if (p.PairedMember == pairedMember && p.IsSource == isSource) return this.RemoveCallback(p);
-            else return true;
-        });
-    }
-
-    RemoveLeashings(pairedMember: number, isSource: boolean, type: GrabType) {
-        this.Pairings = this.Pairings.filter(p => {
-            if (p.PairedMember == pairedMember && p.Type == type && p.IsSource == isSource) return this.RemoveCallback(p);
-            else return true;
+            if (p.PairedMember === pairedMember
+                && (type === undefined || p.Type === type)
+                && (isSource === undefined || p.IsSource === isSource)) {
+                    this.RemoveCallback(p);
+                    return false;
+                }
+            return true;
         });
     }
 
@@ -696,7 +687,7 @@ export class LeashingModule extends BaseModule {
         if (!escapeFrom.MemberNumber)
             return;
 
-        this.RemoveLeashingsWithMember(escapeFrom.MemberNumber, false);
+        this.RemoveLeashings(escapeFrom.MemberNumber, false);
         sendLSCGCommand(escapeFrom, "escape");
     }
 
@@ -720,8 +711,8 @@ export class LeashingModule extends BaseModule {
     }
 
     IncomingEscape(sender: OtherCharacter | null, escapeFromMemberNumber: number) {
-        if (!!sender && !!sender.MemberNumber && escapeFromMemberNumber == Player.MemberNumber) {
-            this.RemoveLeashingsWithMember(sender.MemberNumber, true);
+        if (!!sender && !!sender.MemberNumber && escapeFromMemberNumber === Player.MemberNumber) {
+            this.RemoveLeashings(sender.MemberNumber, true);
         }
     }
 
