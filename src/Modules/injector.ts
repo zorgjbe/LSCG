@@ -560,7 +560,7 @@ export class InjectorModule extends BaseModule {
 
     InjectionLocationTable: Map<string, number> = new Map<string, number>(Object.entries(locationObj))
 
-    GetDrugTypes(item: CraftingItem): DrugType[] {
+    GetDrugTypes(item: CraftingPartialItem): DrugType[] {
         var name = item.Name;
         var description = typeof CraftingDescription === "undefined" ? item.Description : CraftingDescription.Decode(item.Description); // R109
         var totalString = name + " | " + description;
