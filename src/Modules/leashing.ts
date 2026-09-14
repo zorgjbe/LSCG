@@ -15,24 +15,24 @@ export type GrabType = "hand"  | "ear" | "tongue" | "arm" | "neck" | "mouth" | "
 export interface LeashDefinition {
     Type: GrabType;
     LabelTarget: string;
-    LabelSource: string;
-    Reverse: boolean; // Victim will drag initiator
-    Bidirectional: boolean; // Will drag if any member leaves
-    Ephemeral: boolean; // Will not drag, but prevents leaving
-    Icon: string;
-    Gags: boolean;
-    Blinds: boolean;
-    Action: string;
-    OnAdd: (pairing: Leashing) => void;
-    OnRemove: (pairing: Leashing) => void;
+    LabelSource?: string;
+    Reverse?: boolean; // Victim will drag initiator
+    Bidirectional?: boolean; // Will drag if any member leaves
+    Ephemeral?: boolean; // Will not drag, but prevents leaving
+    Icon?: string;
+    Gags?: boolean;
+    Blinds?: boolean;
+    Action?: string;
+    OnAdd?: (pairing: Leashing) => void;
+    OnRemove?: (pairing: Leashing) => void;
 }
 
-export const LeashDefinitions: Map<GrabType, LeashDefinition> = new Map<GrabType, LeashDefinition>([
-    ["arm", <LeashDefinition>{Type: "arm", Action: "roughly pulls", LabelTarget: "Arm grabbed by %OPP_NAME%", LabelSource: "Grabbing %OPP_NAME_POSSESSIVE% arm"}],
-    ["hair", <LeashDefinition>{Type: "hair", Action: "drags", LabelTarget: "Hair pulled by %OPP_NAME%", LabelSource: "Pulling %OPP_NAME_POSSESSIVE% hair"}],
-    ["nose", <LeashDefinition>{Type: "nose", Action: "pulls", LabelTarget: "Nose pulled by %OPP_NAME%", LabelSource: "Pulling %OPP_NAME_POSSESSIVE% nose"}],
-    ["nipples", <LeashDefinition>{Type: "nipples", Action: "yanks", LabelTarget: "Nipples pulled by %OPP_NAME%", LabelSource: "Pulling %OPP_NAME_POSSESSIVE% nipples"}],
-    ["chomp", <LeashDefinition>{Type: "chomp", LabelTarget: "Chomped on by %OPP_NAME%", LabelSource: "Chomping on %OPP_NAME%", Icon: "Assets/Female3DCG/Mouth/Angry/Icon.png", Reverse: true, Gags: true,
+export const LeashDefinitions = new Map<GrabType, LeashDefinition>([
+    ["arm", {Type: "arm", Action: "roughly pulls", LabelTarget: "Arm grabbed by %OPP_NAME%", LabelSource: "Grabbing %OPP_NAME_POSSESSIVE% arm"}],
+    ["hair", {Type: "hair", Action: "drags", LabelTarget: "Hair pulled by %OPP_NAME%", LabelSource: "Pulling %OPP_NAME_POSSESSIVE% hair"}],
+    ["nose", {Type: "nose", Action: "pulls", LabelTarget: "Nose pulled by %OPP_NAME%", LabelSource: "Pulling %OPP_NAME_POSSESSIVE% nose"}],
+    ["nipples", {Type: "nipples", Action: "yanks", LabelTarget: "Nipples pulled by %OPP_NAME%", LabelSource: "Pulling %OPP_NAME_POSSESSIVE% nipples"}],
+    ["chomp", {Type: "chomp", LabelTarget: "Chomped on by %OPP_NAME%", LabelSource: "Chomping on %OPP_NAME%", Icon: "Assets/Female3DCG/Mouth/Angry/Icon.png", Reverse: true, Gags: true,
         OnAdd: (pairing) => {
             if (pairing.IsSource) {(<any>pairing)['temp'] = (WardrobeGetExpression(Player)?.Mouth ?? null); CharacterSetFacialExpression(Player, "Mouth", "Angry")};
         },
@@ -40,28 +40,28 @@ export const LeashDefinitions: Map<GrabType, LeashDefinition> = new Map<GrabType
             if (pairing.IsSource) CharacterSetFacialExpression(Player, "Mouth", (<any>pairing)['temp'] ?? null);
         }
     }],
-    ["ear", <LeashDefinition>{Type: "ear", LabelTarget: "Ear pinched by %OPP_NAME%", LabelSource: "Pinching %OPP_NAME_POSSESSIVE% ear", Icon: ICONS.EAR}],
-    ["hand", <LeashDefinition>{Type: "hand", LabelTarget: "Holding %OPP_NAME_POSSESSIVE% hand", Icon: ICONS.HOLD_HANDS, Bidirectional: true}],
-    ["horn", <LeashDefinition>{Type: "horn", LabelTarget: "Horn grabbed by %OPP_NAME%", LabelSource: "Grabbing %OPP_NAME_POSSESSIVE% horn"}],
-    ["tail", <LeashDefinition>{Type: "tail", LabelTarget: "Tail held by %OPP_NAME%", LabelSource: "Holding %OPP_NAME_POSSESSIVE% tail"}],
-    ["mouth", <LeashDefinition>{Type: "mouth", LabelTarget: "Mouth clamped by %OPP_NAME%", LabelSource: "Clamping over %OPP_NAME_POSSESSIVE% mouth", Icon: ICONS.MUTE, Gags: true}],
-    ["eyes", <LeashDefinition>{Type: "eyes", LabelTarget: "Eyes covered by %OPP_NAME%", LabelSource: "Covering %OPP_NAME_POSSESSIVE% eyes", Icon: "Icons/Private.png", Blinds: true,
+    ["ear", {Type: "ear", LabelTarget: "Ear pinched by %OPP_NAME%", LabelSource: "Pinching %OPP_NAME_POSSESSIVE% ear", Icon: ICONS.EAR}],
+    ["hand", {Type: "hand", LabelTarget: "Holding %OPP_NAME_POSSESSIVE% hand", Icon: ICONS.HOLD_HANDS, Bidirectional: true}],
+    ["horn", {Type: "horn", LabelTarget: "Horn grabbed by %OPP_NAME%", LabelSource: "Grabbing %OPP_NAME_POSSESSIVE% horn"}],
+    ["tail", {Type: "tail", LabelTarget: "Tail held by %OPP_NAME%", LabelSource: "Holding %OPP_NAME_POSSESSIVE% tail"}],
+    ["mouth", {Type: "mouth", LabelTarget: "Mouth clamped by %OPP_NAME%", LabelSource: "Clamping over %OPP_NAME_POSSESSIVE% mouth", Icon: ICONS.MUTE, Gags: true}],
+    ["eyes", {Type: "eyes", LabelTarget: "Eyes covered by %OPP_NAME%", LabelSource: "Covering %OPP_NAME_POSSESSIVE% eyes", Icon: "Icons/Private.png", Blinds: true,
         OnAdd: (pairing) => {
             if (!pairing.IsSource || pairing.PairedMember == Player.MemberNumber) {(<any>pairing)['temp'] = (WardrobeGetExpression(Player)?.Eyes ?? null); CharacterSetFacialExpression(Player, "Eyes", "Closed")};
         },
         OnRemove: (pairing) => {
             if (!pairing.IsSource || pairing.PairedMember == Player.MemberNumber) CharacterSetFacialExpression(Player, "Eyes", (<any>pairing)['temp'] ?? null);
         }}],
-    ["mouth-with-foot", <LeashDefinition>{Type: "mouth-with-foot", LabelTarget: "Mouth filled with %OPP_NAME_POSSESSIVE% foot", LabelSource: "Filling %OPP_NAME_POSSESSIVE% mouth with foot", Icon: "Icons/Management.png", Ephemeral: true, Gags: true}],
-    ["neck", <LeashDefinition>{Type: "neck", LabelTarget: "Choked by %OPP_NAME%", LabelSource: "Choking %OPP_NAME%", Icon: ICONS.NECK,
+    ["mouth-with-foot", {Type: "mouth-with-foot", LabelTarget: "Mouth filled with %OPP_NAME_POSSESSIVE% foot", LabelSource: "Filling %OPP_NAME_POSSESSIVE% mouth with foot", Icon: "Icons/Management.png", Ephemeral: true, Gags: true}],
+    ["neck", {Type: "neck", LabelTarget: "Choked by %OPP_NAME%", LabelSource: "Choking %OPP_NAME%", Icon: ICONS.NECK,
         OnAdd: (pairing) => {
             if (!pairing.IsSource || pairing.PairedMember == Player.MemberNumber) getModule<CollarModule>("CollarModule")?.HandChoke(getCharacter(pairing.PairedMember))
         },
         OnRemove: (pairing) => {
             if (!pairing.IsSource || pairing.PairedMember == Player.MemberNumber) getModule<CollarModule>("CollarModule")?.ReleaseHandChoke(getCharacter(pairing.PairedMember), true)
         }}],
-    ["collar", <LeashDefinition>{Type: "collar", Action: "drags", LabelTarget: "Collar grabbed by %OPP_NAME%", LabelSource: "Holding %OPP_NAME_POSSESSIVE% collar", Icon: ICONS.COLLAR}],
-    ["tongue", <LeashDefinition>{Type: "tongue", LabelTarget: "Tongue held by %OPP_NAME%", LabelSource: "Holding %OPP_NAME_POSSESSIVE% tongue", Icon: ICONS.TONGUE, Gags: true,
+    ["collar", {Type: "collar", Action: "drags", LabelTarget: "Collar grabbed by %OPP_NAME%", LabelSource: "Holding %OPP_NAME_POSSESSIVE% collar", Icon: ICONS.COLLAR}],
+    ["tongue", {Type: "tongue", LabelTarget: "Tongue held by %OPP_NAME%", LabelSource: "Holding %OPP_NAME_POSSESSIVE% tongue", Icon: ICONS.TONGUE, Gags: true,
         OnAdd: (pairing) => {
             if (!pairing.IsSource || pairing.PairedMember == Player.MemberNumber) {(<any>pairing)['temp'] = (WardrobeGetExpression(Player)?.Mouth ?? null); CharacterSetFacialExpression(Player, "Mouth", "Ahegao")};
         },
@@ -69,7 +69,7 @@ export const LeashDefinitions: Map<GrabType, LeashDefinition> = new Map<GrabType
             if (!pairing.IsSource || pairing.PairedMember == Player.MemberNumber) CharacterSetFacialExpression(Player, "Mouth", (<any>pairing)['temp'] ?? null);
         }
     }],
-    ["compulsion", <LeashDefinition>{Type: "compulsion", LabelTarget: "Compelled to follow %OPP_NAME%", LabelSource: "Followed by %OPP_NAME%", Icon: ICONS.PENDANT}]
+    ["compulsion", {Type: "compulsion", LabelTarget: "Compelled to follow %OPP_NAME%", LabelSource: "Followed by %OPP_NAME%", Icon: ICONS.PENDANT}]
 ]);
 
 export class Leashing implements Pairing {
