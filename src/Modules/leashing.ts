@@ -2,7 +2,7 @@ import { BaseModule } from "base";
 import { getModule } from "modules";
 import { BaseSettingsModel } from "Settings/Models/base";
 import { ModuleCategory } from "Settings/setting_definitions";
-import { GetActivityName, GetTargetCharacter, ICONS, IsIncapacitated, LSCG_SendLocal, OnAction, OnActivity, SendAction, callOriginal, getCharacter, getRandomInt, hookFunction, mouseTooltip, removeAllHooksByModule, replace_template, sendLSCGCommand, sendLSCGCommandBeep, setOrIgnoreBlush } from "../utils";
+import { GetActivityName, GetTargetCharacter, ICONS, IsIncapacitated, LSCG_SendLocal, OnAction, OnActivity, SendAction, callOriginal, getCharacter, getRandomInt, hookFunction, mouseTooltip, patchFunction, removeAllHooksByModule, replace_template, sendLSCGCommand, sendLSCGCommandBeep, setOrIgnoreBlush } from "../utils";
 import { MiscModule } from "./misc";
 import { Pairing } from "./States/PairedBaseState";
 import { ItemUseModule } from "./item-use";
@@ -366,110 +366,28 @@ export class LeashingModule extends BaseModule {
             }
         }, ModuleCategory.Leashed);
 
+        patchFunction("ServerHandleLeashBeep", {
+            "if (ChatRoomLeashPlayer !== data.MemberNumber) return;":
+                "if (ChatRoomLeashPlayer !== data.MemberNumber && this.LeashedByPairings.map(p => p.PairedMember).indexOf(data.MemberNumber) === -1) return;",
+        });
+
+        // We need to track that acrodd ServerHandleLeashBeep/ChatRoomBreakLeash
+        let beepSourceNumber: number;
+
         hookFunction("ServerHandleLeashBeep", 1, async (args, next) => {
-            const res = next(args);
             const [data] = args;
-
-            // Validation was done by ServerAccountBeep
-
-            // Make sure leashing is enabled
-            if (!this.Enabled || !Player.OnlineSharedSettings.AllowPlayerLeashing) return res;
-
-            // No pairing for that user, skip
-            if (this.LeashedByPairings.map(p => p.PairedMember).indexOf(data.MemberNumber) === -1) return res;
-
-            // We're leashed into the room we're already in, skip
-            if (ServerPlayerIsInChatRoom() && ChatRoomData?.Name === data.ChatRoomName) return res;
-
-            // We can't actually be leashed
-            if (!ChatRoomCanBeLeashedBy(data.MemberNumber, Player)) {
-                this.RemoveLeashings(data.MemberNumber, false);
-                return res;
-            }
-            
-            /** @type {Result<ServerChatRoomSearchResultResponse, ServerError>} */
-            let searchRes;
-            let retries = 5;
-            while (true) {
-                searchRes = await ServerRoomSearch(data.ChatRoomName, { Language: "", Space: data.ChatRoomSpace });
-                if (searchRes.ok) {
-                    break;
-                }
-                
-                if (searchRes.error instanceof ServerTimeoutError) {
-                    this.RemoveLeashings(data.MemberNumber, false, undefined);
-                    this.ReportLeashIssue("Timeout");
-                } else if (searchRes.error instanceof ServerInProgressError) {
-                    continue;
-                } else {
-                    this.RemoveLeashings(data.MemberNumber, false);
-                }
-                
-                if (--retries >= 0) {
-                    CommonSleep(ServerDefaultTimeout);
-                    continue;
-                }
-                return;
-            }
-            
-            const room = searchRes.unwrap().find(r => r.Name === data.ChatRoomName);
-            if (!room) {
-                this.ReportLeashIssue("CannotFindRoom");
-                this.RemoveLeashings(data.MemberNumber, false);
-                return;
-            }
-            
-            if (ChatSearchTempHiddenRooms.indexOf(room.CreatorMemberNumber) != -1) {
-                this.RemoveLeashings(data.MemberNumber, false);
-                this.ReportLeashIssue("TempHidden");
-                return;
-            }
-            
-            if (Player.HasOnGhostlist(room.CreatorMemberNumber)) {
-                this.RemoveLeashings(data.MemberNumber, false);
-                this.ReportLeashIssue("GhostList");
-                return;
-            }
-            
-            // The room we're entering is off-limit to us
-            if (!ChatSelectGendersAllowed(data.ChatRoomSpace, Player.GetGenders()) || CharacterHasBlockedItem(Player, room.BlockCategory)) {
-                this.RemoveLeashings(data.MemberNumber, false);
-                this.ReportLeashIssue("RoomBlocked");
-                return;
-            }
-
-            // We have a valid room, leave the one we're in
-            if (ChatRoomData) {
-                ChatRoomLeave();
-            }
-
-            retries = 5;
-            while (true) {
-                const result = await ServerRoomJoin(room.Name);
-                if (result.ok) {
-                    break;
-                }
-                
-                if (result.error instanceof ServerJoinError) {
-                    this.RemoveLeashings(data.MemberNumber, false);
-                    this.ReportLeashIssue(result.error.name);
-                } else if (result.error instanceof ServerInProgressError) {
-                    continue;
-                } else if (result.error instanceof ServerTimeoutError) {
-                    this.RemoveLeashings(data.MemberNumber, false);
-                    this.ReportLeashIssue("Timeout");
-                } else {
-                    this.RemoveLeashings(data.MemberNumber, false);
-                }
-                
-                if (--retries >= 0) {
-                    await CommonSleep(ServerDefaultTimeout);
-                    continue;
-                }
-                return;
-            }
+            beepSourceNumber = data.MemberNumber;
+            const res = next(args);
+            beepSourceNumber = -1;
             return res;
         }, ModuleCategory.Leashed);
+        
+        hookFunction("ChatRoomBreakLeash", 1, (args, next) => {
+            if (this.Enabled && Player.OnlineSharedSettings.AllowPlayerLeashing && beepSourceNumber !== -1) {
+                this.RemoveLeashings(beepSourceNumber, false);
+            }
+            return next(args);
+        });
 
         hookFunction("ChatRoomSync", 1, (args, next) => {
             const ret = next(args);
