@@ -85,6 +85,20 @@ export class Leashing implements Pairing {
     Type: GrabType;
 }
 
+type LeashingRemovalReason =
+    | "AccountError"
+    | "AlreadyInRoom"
+    | "CannotFindRoom"
+    | "GhostList"
+    | "InvalidRoomData"
+    | "RoomBanned"
+    | "RoomBlocked"
+    | "RoomFull"
+    | "RoomLocked"
+    | "TempHidden"
+    | "Timeout"
+;
+
 export class LeashingModule extends BaseModule {
     Pairings: Leashing[] = [];
 
@@ -352,28 +366,109 @@ export class LeashingModule extends BaseModule {
             }
         }, ModuleCategory.Leashed);
 
-        hookFunction("ServerAccountBeep", 1, (args, next) => {
-            next(args);
-            let data = args[0];
-            if (this.Enabled && data.BeepType == "Leash" && this.LeashedByPairings.map(p => p.PairedMember).indexOf(data.MemberNumber) > -1 && data.ChatRoomName) {
-                if (Player.OnlineSharedSettings && Player.OnlineSharedSettings.AllowPlayerLeashing != false && (CurrentScreen != "ChatRoom" || !ChatRoomData || (CurrentScreen == "ChatRoom" && ChatRoomData.Name != data.ChatRoomName))) {
-                    if (ChatRoomCanBeLeashedBy(data.MemberNumber, Player) && ChatSelectGendersAllowed(data.ChatRoomSpace, Player.GetGenders()) && data.ChatRoomName != ChatRoomData?.Name) {
-                        ChatRoomJoinLeash = data.ChatRoomName;
-    
-                        DialogLeave();
-                        ChatRoomClearAllElements();
-                        this.JoinRoom(data.ChatRoomName);
-                        // if (CurrentScreen == "ChatRoom") {
-                        //     ServerSend("ChatRoomLeave", "");
-                        //     CommonSetScreen("Online", "ChatSearch");
-                        // }
-                        // else ChatRoomStart(data.ChatRoomSpace, "", null, null, "Introduction", BackgroundsTagList); //CommonSetScreen("Room", "ChatSearch")
-                    } else {
-                        // If the leading character is no longer allowed or goes somewhere blocked, remove them from our leading lists.
-                        this.RemoveLeashings(data.MemberNumber, false);
-                    }
-                }
+        hookFunction("ServerHandleLeashBeep", 1, async (args, next) => {
+            const res = next(args);
+            const [data] = args;
+
+            // Validation was done by ServerAccountBeep
+
+            // Make sure leashing is enabled
+            if (!this.Enabled || !Player.OnlineSharedSettings.AllowPlayerLeashing) return res;
+
+            // No pairing for that user, skip
+            if (this.LeashedByPairings.map(p => p.PairedMember).indexOf(data.MemberNumber) === -1) return res;
+
+            // We're leashed into the room we're already in, skip
+            if (ServerPlayerIsInChatRoom() && ChatRoomData?.Name === data.ChatRoomName) return res;
+
+            // We can't actually be leashed
+            if (!ChatRoomCanBeLeashedBy(data.MemberNumber, Player)) {
+                this.RemoveLeashings(data.MemberNumber, false);
+                return res;
             }
+            
+            /** @type {Result<ServerChatRoomSearchResultResponse, ServerError>} */
+            let searchRes;
+            let retries = 5;
+            while (true) {
+                searchRes = await ServerRoomSearch(data.ChatRoomName, { Language: "", Space: data.ChatRoomSpace });
+                if (searchRes.ok) {
+                    break;
+                }
+                
+                if (searchRes.error instanceof ServerTimeoutError) {
+                    this.RemoveLeashings(data.MemberNumber, false, undefined);
+                    this.ReportLeashIssue("Timeout");
+                } else if (searchRes.error instanceof ServerInProgressError) {
+                    continue;
+                } else {
+                    this.RemoveLeashings(data.MemberNumber, false);
+                }
+                
+                if (--retries >= 0) {
+                    CommonSleep(ServerDefaultTimeout);
+                    continue;
+                }
+                return;
+            }
+            
+            const room = searchRes.unwrap().find(r => r.Name === data.ChatRoomName);
+            if (!room) {
+                this.ReportLeashIssue("CannotFindRoom");
+                this.RemoveLeashings(data.MemberNumber, false);
+                return;
+            }
+            
+            if (ChatSearchTempHiddenRooms.indexOf(room.CreatorMemberNumber) != -1) {
+                this.RemoveLeashings(data.MemberNumber, false);
+                this.ReportLeashIssue("TempHidden");
+                return;
+            }
+            
+            if (Player.HasOnGhostlist(room.CreatorMemberNumber)) {
+                this.RemoveLeashings(data.MemberNumber, false);
+                this.ReportLeashIssue("GhostList");
+                return;
+            }
+            
+            // The room we're entering is off-limit to us
+            if (!ChatSelectGendersAllowed(data.ChatRoomSpace, Player.GetGenders()) || CharacterHasBlockedItem(Player, room.BlockCategory)) {
+                this.RemoveLeashings(data.MemberNumber, false);
+                this.ReportLeashIssue("RoomBlocked");
+                return;
+            }
+
+            // We have a valid room, leave the one we're in
+            if (ChatRoomData) {
+                ChatRoomLeave();
+            }
+
+            retries = 5;
+            while (true) {
+                const result = await ServerRoomJoin(room.Name);
+                if (result.ok) {
+                    break;
+                }
+                
+                if (result.error instanceof ServerJoinError) {
+                    this.RemoveLeashings(data.MemberNumber, false);
+                    this.ReportLeashIssue(result.error.name);
+                } else if (result.error instanceof ServerInProgressError) {
+                    continue;
+                } else if (result.error instanceof ServerTimeoutError) {
+                    this.RemoveLeashings(data.MemberNumber, false);
+                    this.ReportLeashIssue("Timeout");
+                } else {
+                    this.RemoveLeashings(data.MemberNumber, false);
+                }
+                
+                if (--retries >= 0) {
+                    await CommonSleep(ServerDefaultTimeout);
+                    continue;
+                }
+                return;
+            }
+            return res;
         }, ModuleCategory.Leashed);
 
         hookFunction("ChatRoomSync", 1, (args, next) => {
@@ -471,11 +566,13 @@ export class LeashingModule extends BaseModule {
         });
     }
 
-    JoinRoom(roomName: string) {
-        ChatSearchLastQueryJoinTime = CommonTime();
-        ChatSearchLastQueryJoin = roomName;
-        //ChatRoomPlayerCanJoin = true;
-        ServerSend("ChatRoomJoin", { Name: roomName });
+    ReportLeashIssue(msg: LeashingRemovalReason) {
+        const str = TextGetInScope(ScreenFileGetTranslation("Online", "ChatSearch", "ChatSearch"), msg);
+        if (str.startsWith(TEXT_NOT_FOUND_PREFIX)) {
+            console.error(`Unknown leash break reason: ${msg}`);
+            return;
+        }
+        ToastManager.error(str);
     }
 
     RoomSync(): void {}
@@ -512,9 +609,8 @@ export class LeashingModule extends BaseModule {
             this.Pairings.push(pairing);
         else // Update if existing pairing to member of matching type
             pairing = Object.assign(exists, pairing);
-        let definition = LeashDefinitions.get(pairing.Type);
-        if (!!definition?.OnAdd)
-            definition.OnAdd(pairing);
+        const definition = LeashDefinitions.get(pairing.Type);
+        definition?.OnAdd?.(pairing);
     }
 
     ReleaseAllLeashingsAsSource() {
@@ -551,9 +647,7 @@ export class LeashingModule extends BaseModule {
     }
 
     RemoveCallback(pairing: Leashing) {
-        let definition = LeashDefinitions.get(pairing.Type);
-        if (definition?.OnRemove)
-            definition.OnRemove(pairing);
+        LeashDefinitions.get(pairing.Type)?.OnRemove?.(pairing);
     }
 
     NotifyUnleashings(leashings: Leashing[]) {
